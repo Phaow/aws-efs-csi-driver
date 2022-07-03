@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"errors"
+	"k8s.io/klog/v2"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -149,6 +150,95 @@ func TestCreateVolume(t *testing.T) {
 					})
 
 				res, err := driver.CreateVolume(ctx, req)
+
+				if err != nil {
+					t.Fatalf("CreateVolume failed: %v", err)
+				}
+
+				if res.Volume == nil {
+					t.Fatal("Volume is nil")
+				}
+
+				if res.Volume.VolumeId != volumeId {
+					t.Fatalf("Volume Id mismatched. Expected: %v, Actual: %v", volumeId, res.Volume.VolumeId)
+				}
+				mockCtl.Finish()
+			},
+		},
+		{
+			name: "Success: DebugTest",
+			testFunc: func(t *testing.T) {
+				mockCtl := gomock.NewController(t)
+				mockCloud := mocks.NewMockCloud(mockCtl)
+
+				driver := &Driver{
+					endpoint:     endpoint,
+					cloud:        mockCloud,
+					gidAllocator: NewGidAllocator(),
+				}
+
+				req := &csi.CreateVolumeRequest{
+					Name: volumeName,
+					VolumeCapabilities: []*csi.VolumeCapability{
+						stdVolCap,
+					},
+					CapacityRange: &csi.CapacityRange{
+						RequiredBytes: capacityRange,
+					},
+					Parameters: map[string]string{
+						ProvisioningMode: "efs-ap",
+						FsId:             fsId,
+						DirectoryPerms:   "777",
+						BasePath:         "test",
+						GidMin:           "1000",
+						GidMax:           "2000",
+					},
+				}
+
+				ctx := context.Background()
+				fileSystem := &cloud.FileSystem{
+					FileSystemId: fsId,
+				}
+				accessPoint := &cloud.AccessPoint{
+					AccessPointId: apId,
+					FileSystemId:  fsId,
+				}
+				klog.Info(fileSystem)
+				mockCloud.EXPECT().DescribeFileSystem(gomock.Eq(ctx), gomock.Any()).Return(fileSystem, nil)
+				mockCloud.EXPECT().CreateAccessPoint(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(accessPoint, nil).
+					Do(func(ctx context.Context, volumeName string, accessPointOpts *cloud.AccessPointOptions) {
+						klog.Info("***", accessPointOpts.Uid)
+						if accessPointOpts.Uid < 1000 || accessPointOpts.Uid > 2000 {
+							t.Fatalf("Uid mimatched. Expected: %v, actual: %v", accessPointOpts.Uid, "[1000-2000]")
+						}
+						if accessPointOpts.Gid < 1000 || accessPointOpts.Gid > 2000 {
+							t.Fatalf("Gid mimatched. Expected: %v, actual: %v", accessPointOpts.Uid, "[1000-2000]")
+						}
+					})
+
+				res, err := driver.CreateVolume(ctx, req)
+
+				req1 := &csi.CreateVolumeRequest{
+					Name: volumeName,
+					VolumeCapabilities: []*csi.VolumeCapability{
+						stdVolCap,
+					},
+					CapacityRange: &csi.CapacityRange{
+						RequiredBytes: capacityRange,
+					},
+					Parameters: map[string]string{
+						ProvisioningMode: "efs-ap",
+						FsId:             fsId,
+						DirectoryPerms:   "777",
+						BasePath:         "test",
+						GidMin:           "3000",
+						GidMax:           "4000",
+					},
+				}
+
+				ctx1 := context.Background()
+
+				driver.CreateVolume(ctx1, req1)
 
 				if err != nil {
 					t.Fatalf("CreateVolume failed: %v", err)

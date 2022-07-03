@@ -238,6 +238,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	accessPointsOptions.Uid = int64(uid)
 	accessPointsOptions.Gid = int64(gid)
+	klog.Info("Git/Uid:", accessPointsOptions.Uid)
 	accessPointsOptions.DirectoryPath = rootDir
 
 	accessPointId, err := localCloud.CreateAccessPoint(ctx, volName, accessPointsOptions)
